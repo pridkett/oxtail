@@ -4,6 +4,9 @@ use std::sync::mpsc;
 use anyhow::Result;
 mod process_handler;
 mod ui;
+mod settings;
+mod commands;
+mod log_entry;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -14,10 +17,17 @@ mod ui;
     
 Key Bindings:
   - q: Quit the application.
+  - : (colon): Enter command mode.
   - Up Arrow: Scroll up one line.
   - Down Arrow: Scroll down one line.
   - PageUp: Scroll up one page.
   - PageDown: Scroll down one page.
+    
+Commands:
+  - :show_source stdout/stderr/all
+  - :hide_source stdout/stderr/all
+  - :show_meta time/source/lines
+  - :hide_meta time/source/lines
     
 Usage:
   highlog <COMMAND> [ARGS]
@@ -42,7 +52,7 @@ fn main() -> Result<()> {
     let cmd = &args.cmd[0];
     let cmd_args: Vec<&str> = args.cmd.iter().skip(1).map(|s| s.as_str()).collect();
 
-    let (tx, rx) = mpsc::channel::<String>();
+    let (tx, rx) = mpsc::channel::<log_entry::LogEntry>();
 
     // Spawn the specified process
     process_handler::start_process(cmd, &cmd_args, tx)?;

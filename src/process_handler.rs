@@ -1,11 +1,11 @@
 use anyhow::Result;
-use chrono::Local;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
+use crate::log_entry::LogEntry;
 
-pub fn start_process(cmd: &str, args: &[&str], tx: Sender<String>) -> Result<()> {
+pub fn start_process(cmd: &str, args: &[&str], tx: Sender<LogEntry>) -> Result<()> {
     let mut child = Command::new(cmd)
         .args(args)
         .stdout(Stdio::piped())
@@ -21,12 +21,7 @@ pub fn start_process(cmd: &str, args: &[&str], tx: Sender<String>) -> Result<()>
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
             if let Ok(l) = line {
-                let output = format!(
-                    "[{}][STDOUT] {}",
-                    Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    l
-                );
-                let _ = tx_stdout.send(output);
+                let _ = tx_stdout.send(LogEntry::new("stdout", l));
             }
         }
     });
@@ -36,12 +31,7 @@ pub fn start_process(cmd: &str, args: &[&str], tx: Sender<String>) -> Result<()>
         let reader = BufReader::new(stderr);
         for line in reader.lines() {
             if let Ok(l) = line {
-                let output = format!(
-                    "[{}][STDERR] {}",
-                    Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    l
-                );
-                let _ = tx.send(output);
+                let _ = tx.send(LogEntry::new("stderr", l));
             }
         }
     });
