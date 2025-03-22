@@ -174,7 +174,7 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
             let log_block = Block::default()
                 .borders(Borders::ALL)
                 .title(Span::styled(
-                    "Highlog - Neon Terminal UI",
+                    "Oxtail - Neon Terminal UI",
                     Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
                 ));
             

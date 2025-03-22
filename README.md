@@ -1,4 +1,4 @@
-# Highlog
+# Oxtail
 
 Patrick Wagstrom &lt;patrick@wagstrom.net&gt;
 
@@ -6,7 +6,7 @@ March 2025
 
 Note: this project is almost entirely vibe coded after I got annoyed with lnav.
 
-Highlog is a terminal user interface application for viewing logs. It uses [ratatui](https://github.com/ratatui-org/ratatui) for rendering and supports both keyboard and mouse input for scrolling through logs.
+Oxtail is a terminal user interface application for viewing logs. It uses [ratatui](https://github.com/ratatui-org/ratatui) for rendering and supports both keyboard and mouse input for scrolling through logs.
 
 ## Features
 

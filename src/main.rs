@@ -30,9 +30,9 @@ Commands:
   - :hide_meta time/source/lines
     
 Usage:
-  highlog <COMMAND> [ARGS]
+  oxtail <COMMAND> [ARGS]
 For example:
-  highlog ls -lR"
+  oxtail ls -lR"
 )]
 struct Args {
     /// The command to run followed by its arguments. Use '--' to separate any flags.
