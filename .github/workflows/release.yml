@@ -1,0 +1,296 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --verbose
+
+  build:
+    name: Build Release for ${{ matrix.target.name }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target:
+              name: x86_64-linux
+              triple: x86_64-unknown-linux-gnu
+              deb_arch: amd64
+            os: ubuntu-latest
+            cross: false
+            binary_name: oxtail
+            asset_name: oxtail-x86_64-linux
+          
+          - target:
+              name: armv7-linux
+              triple: armv7-unknown-linux-gnueabihf
+              deb_arch: armhf
+            os: ubuntu-latest
+            cross: true
+            binary_name: oxtail
+            asset_name: oxtail-armv7-linux
+          
+          - target:
+              name: aarch64-linux
+              triple: aarch64-unknown-linux-gnu
+              deb_arch: arm64
+            os: ubuntu-latest
+            cross: true
+            binary_name: oxtail
+            asset_name: oxtail-aarch64-linux
+          
+          - target:
+              name: aarch64-macos
+              triple: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+            binary_name: oxtail
+            asset_name: oxtail-aarch64-macos
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target.triple }}
+          override: true
+      
+      - name: Install cross (for cross-compilation)
+        if: matrix.cross
+        run: cargo install cross
+      
+      - name: Install cargo-deb
+        if: contains(matrix.os, 'ubuntu')
+        run: cargo install cargo-deb
+      
+      - name: Build with cargo (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --verbose --target ${{ matrix.target.triple }}
+      
+      - name: Build with cross (cross-compile)
+        if: matrix.cross
+        run: cross build --release --verbose --target ${{ matrix.target.triple }}
+      
+      - name: Prepare binary (Linux)
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          cd target/${{ matrix.target.triple }}/release
+          ls -alR
+          strip ${{ matrix.binary_name }} || true
+          tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
+          echo "ASSET_PATH=target/${{ matrix.target.triple }}/release/${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
+      
+      - name: Prepare binary (macOS)
+        if: contains(matrix.os, 'macos')
+        run: |
+          cd target/${{ matrix.target.triple }}/release
+          ls -alR
+          strip ${{ matrix.binary_name }} || true
+          tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
+          echo "ASSET_PATH=target/${{ matrix.target.triple }}/release/${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
+      
+      - name: Set environment variables
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          echo "GITHUB_REPO_NAME=$(basename $GITHUB_REPOSITORY)" >> $GITHUB_ENV
+          echo "YEAR_RANGE=2024-2025" >> $GITHUB_ENV
+          echo "MAINTAINER=Patrick Wagstrom <patrick@wagstrom.net>" >> $GITHUB_ENV
+          echo "HOMEPAGE=https://github.com/pridkett/oxtail" >> $GITHUB_ENV
+
+      - name: Create Debian control file
+        if: contains(matrix.os, 'ubuntu')
+        # Fields from https://www.debian.org/doc/debian-policy/ch-controlfields.html#binary-package-control-files-debian-control
+        run: |
+          mkdir -p debian/DEBIAN
+          (
+            echo "Package:      ${GITHUB_REPO_NAME}"
+            echo "Version:      ${VERSION}"
+            echo "Section:      ${SECTION:-utils}"
+            echo "Priority:     ${PRIORITY:-optional}"
+            echo "Architecture: ${{ matrix.target.deb_arch }}"
+            if [ -n "${DEPENDS}" ]
+            then
+              echo "Depends: ${DEPENDS}"
+            fi
+            echo "Maintainer: ${MAINTAINER:-Patrick Wagstrom <patrick@wagstrom.net>}"
+            echo "Description: oxtail"
+            echo " An interactive tool for looking and filtering multiple streaming log sources."
+            if [ -n "${HOMEPAGE}" ]
+            then
+              echo "Homepage: ${HOMEPAGE}"
+            fi
+          ) | tee debian/DEBIAN/control
+          (
+            echo "Files:"
+            echo " *"
+            echo "Copyright: ${YEAR_RANGE} ${MAINTAINER:-Patrick Wagstrom <patrick@wagstrom.net>}"
+            echo "License: MIT"
+            echo ""
+            echo "License: MIT"
+            sed 's/^/ /' "SOURCES/${GITHUB_REPO_NAME}/usr/share/doc/${GITHUB_REPO_NAME}/LICENSE"
+          ) | tee debian/DEBIAN/copyright
+
+      - name: Create Debian package
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          # Get version without 'v' prefix
+          VERSION=${GITHUB_REF#refs/tags/v}
+          
+          # For native builds
+          if [ "${{ matrix.cross }}" = "false" ]; then
+            cargo deb --target ${{ matrix.target.triple }} --no-build
+          else
+            # For cross-compiled builds, we need to manually create the deb
+            mkdir -p debian/DEBIAN
+            mkdir -p debian/usr/bin
+            
+            # Copy binary to package directory
+            cp target/${{ matrix.target.triple }}/release/${{ matrix.binary_name }} debian/usr/bin/
+            chmod 755 debian/usr/bin/${{ matrix.binary_name }}
+
+            # Build the package
+            dpkg-deb --build -Zgzip debian
+            
+            # Rename the package
+            mv debian.deb oxtail_${VERSION}_${{ matrix.target.deb_arch }}.deb
+          fi
+          
+          # Find the created .deb file
+          DEB_FILE=$(find . -name "*.deb" | head -n 1)
+          echo "DEB_PATH=${DEB_FILE}" >> $GITHUB_ENV
+      
+      - name: Upload Release Asset (tar.gz)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ env.ASSET_PATH }}
+          if-no-files-found: error
+      
+      - name: Upload Release Asset (.deb)
+        if: contains(matrix.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-deb
+          path: ${{ env.DEB_PATH }}
+          if-no-files-found: error
+
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Get version from tag
+        id: get_version
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          echo "Crate version: $VERSION"
+      
+      - name: Check version in Cargo.toml
+        run: |
+          CARGO_VERSION=$(grep -m 1 '^version =' Cargo.toml | cut -d '"' -f 2)
+          if [ "$CARGO_VERSION" != "${{ steps.get_version.outputs.VERSION }}" ]; then
+            echo "Error: Version in Cargo.toml ($CARGO_VERSION) does not match tag version (${{ steps.get_version.outputs.VERSION }})"
+            exit 1
+          fi
+          
+      - name: Get crate name
+        id: get_name
+        run: |
+          # Extract the crate name from Cargo.toml (assumes name is the first occurrence)
+          name=$(grep '^name' Cargo.toml | head -n 1 | cut -d '"' -f2)
+          echo "CRATE_NAME=$name" >> $GITHUB_OUTPUT
+          echo "Crate name: $name"
+
+      - name: Check if version exists on crates.io
+        id: check_version
+        run: |
+          version="${{ steps.get_version.outputs.VERSION }}"
+          crate_name="${{ steps.get_name.outputs.CRATE_NAME }}"
+          echo "Checking if version '$version' exists for crate '$crate_name'"
+          # Query crates.io API for this crate
+          response=$(curl -s "https://crates.io/api/v1/crates/$crate_name")
+          # Look for the version in the versions array using jq
+          if echo "$response" | jq -e --arg ver "$version" '.versions[] | select(.num == $ver)' > /dev/null; then
+            echo "version exists on crates.io"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "version does not exist on crates.io"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to crates.io
+        if: steps.check_version.outputs.exists == 'false'
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --token ${{ secrets.CRATES_IO_TOKEN }}
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build, publish-crates-io]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Prepare artifacts for release
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -name "*.tar.gz" -exec cp {} release-assets/ \;
+          find artifacts -type f -name "*.deb" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: release-assets/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
