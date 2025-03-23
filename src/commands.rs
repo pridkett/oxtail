@@ -1,7 +1,7 @@
 use crate::settings::LogSettings;
 
 pub enum CommandResult {
-    Success(String),
+    Success(()),  // Changed to unit type as we don't use the string value
     Error(String),
     Quit,
 }
@@ -28,10 +28,10 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
             let source_name = parts[1];
             if source_name == "all" {
                 settings.set_all_sources_visibility(true);
-                CommandResult::Success("All sources are now visible".to_string())
+                CommandResult::Success(())
             } else {
                 settings.get_source_config(source_name).visible = true;
-                CommandResult::Success(format!("Source '{}' is now visible", source_name))
+                CommandResult::Success(())
             }
         },
         
@@ -43,10 +43,10 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
             let source_name = parts[1];
             if source_name == "all" {
                 settings.set_all_sources_visibility(false);
-                CommandResult::Success("All sources are now hidden".to_string())
+                CommandResult::Success(())
             } else {
                 settings.get_source_config(source_name).visible = false;
-                CommandResult::Success(format!("Source '{}' is now hidden", source_name))
+                CommandResult::Success(())
             }
         },
         
@@ -60,23 +60,23 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
             match parts[1] {
                 "time" => {
                     settings.show_time = show;
-                    CommandResult::Success(format!("Timestamps are now {}", if show { "visible" } else { "hidden" }))
+                    CommandResult::Success(())
                 },
                 "source" => {
                     settings.show_source_labels = show;
-                    CommandResult::Success(format!("Source labels are now {}", if show { "visible" } else { "hidden" }))
+                    CommandResult::Success(())
                 },
                 "lines" => {
                     settings.show_line_numbers = show;
-                    CommandResult::Success(format!("Line numbers are now {}", if show { "visible" } else { "hidden" }))
+                    CommandResult::Success(())
                 },
                 "filetype" => {
                     settings.show_file_type = show;
-                    CommandResult::Success(format!("File type indicators are now {}", if show { "visible" } else { "hidden" }))
+                    CommandResult::Success(())
                 },
                 "ansi" => {
                     settings.show_raw = show;
-                    CommandResult::Success(format!("ANSI escape codes are now {}", if show { "shown" } else { "hidden" }))
+                    CommandResult::Success(())
                 },
                 _ => CommandResult::Error(format!("Unknown metadata type: {}", parts[1]))
             }
