@@ -363,7 +363,7 @@ impl Widget for CommandPrompt {
         let display_text = if self.search_mode {
             format!("(reverse-i-search)`{}': {}", self.search_query, self.buffer)
         } else if let Some(ref msg) = self.status {
-            format!(": {} | {}", self.buffer, msg)
+            format!(":{} | {}", self.buffer, msg)
         } else {
             // Format with cursor position indicator
             let cursor_indicator = if self.cursor_position < self.buffer.len() {
@@ -375,7 +375,7 @@ impl Widget for CommandPrompt {
                 // Cursor at the end
                 format!("{}\u{2588}", self.buffer)
             };
-            format!(": {}", cursor_indicator)
+            format!(":{}", cursor_indicator)
         };
         
         let style = if self.search_mode {
