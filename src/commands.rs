@@ -3,6 +3,7 @@ use crate::settings::LogSettings;
 pub enum CommandResult {
     Success(String),
     Error(String),
+    Quit,
 }
 
 pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
@@ -13,6 +14,11 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
     }
     
     match parts[0] {
+        // Quit command
+        "q" | "quit" => {
+            CommandResult::Quit
+        },
+        
         // Source visibility commands - accept both full and shortened forms
         "show_source" | "show" => {
             if parts.len() < 2 {

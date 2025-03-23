@@ -4,7 +4,8 @@ use std::time::Duration;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
+    cursor::MoveTo,
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -107,7 +108,7 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
     // Setup terminal
     enable_raw_mode().unwrap();
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0), EnterAlternateScreen, EnableMouseCapture).unwrap();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
@@ -343,6 +344,10 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                                         },
                                         CommandResult::Error(err) => {
                                             *status = Some(format!("Error: {}", err));
+                                        },
+                                        CommandResult::Quit => {
+                                            // Exit the application using the same method as when 'q' is pressed
+                                            break;
                                         },
                                     }
                                 },
