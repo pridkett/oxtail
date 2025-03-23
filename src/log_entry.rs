@@ -8,7 +8,8 @@ pub struct LogEntry {
     pub source: String,      // e.g., "stdout", "stderr", "file.log"
     pub content: String,     // The actual log message
     pub content_plain: String, // content with ANSI codes stripped out
-    pub is_json: bool, // true if the content is JSON
+    pub is_json: bool,       // true if the content is JSON
+    pub line_number: usize,  // The line number within this stream
 }
 
 impl LogEntry {
@@ -30,18 +31,17 @@ impl LogEntry {
             content: content_str,
             content_plain,
             is_json,
+            line_number: 0, // Default value, should be set later
         }
     }
     
     // Format the entry according to settings
-    pub fn format(&self, settings: &LogSettings, line_number: Option<usize>) -> String {
+    pub fn format(&self, settings: &LogSettings, _line_number: Option<usize>) -> String {
         let mut parts = Vec::new();
 
         // Add line number if enabled
         if settings.show_line_numbers {
-            if let Some(num) = line_number {
-                parts.push(format!("[{:>6}]", num));
-            }
+            parts.push(format!("[{:>6}]", self.line_number));
         }
         
         // Add timestamp if enabled

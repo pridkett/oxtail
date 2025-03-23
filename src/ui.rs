@@ -158,10 +158,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
             // Format the visible lines based on settings
             let display_lines: Vec<Spans> = filtered_logs[start..end]
                 .iter()
-                .enumerate()
-                .map(|(idx, entry)| {
-                    let line_number = Some(start + idx + 1);
-                    let formatted = entry.format(&settings, line_number);
+                .map(|entry| {
+                    let formatted = entry.format(&settings, None);
                     let style = match entry.source.as_str() {
                         "stderr" => Style::default().fg(Color::Red),
                         "stdout" => Style::default().fg(Color::Yellow),
