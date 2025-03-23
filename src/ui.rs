@@ -11,15 +11,11 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     Terminal,
-    widgets::{Block, Borders, Paragraph, Wrap},
-    text::{Span, Spans},
-    style::{Color, Modifier, Style},
 };
 use crate::log_entry::LogEntry;
 use crate::settings::LogSettings;
 use crate::commands::{self, CommandResult};
-use crate::widgets::CommandPrompt;
-use crate::widgets::CommandInputResult;
+use crate::widgets::{CommandPrompt, CommandInputResult, LogViewer, LogViewerExt};
 
 pub fn run_ui(rx: Receiver<LogEntry>) {
     // Setup terminal
@@ -31,14 +27,12 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
 
     // Vector to store log entries received from process_handler
     let mut log_entries: Vec<LogEntry> = Vec::new();
-    // Scroll offset: number of lines from the bottom.
-    let mut scroll_offset: usize = 0;
-    // Track whether output is paused
-    let mut is_paused = false;
     // Keep track of previous filtered entry count for pause adjustment
     let mut previous_filtered_count = 0;
     // Command prompt widget - this will manage the UI mode state
     let mut command_prompt = CommandPrompt::new();
+    // Log viewer widget - this will manage the log display and scroll state
+    let mut log_viewer = LogViewer::new();
     // Settings
     let mut settings = LogSettings::default();
 
@@ -59,16 +53,7 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
         // Update scroll position based on new entries and pause state
         if had_new_entries {
             let new_filtered_entries = filtered_logs.len().saturating_sub(previous_filtered_count);
-            if is_paused {
-                // When paused, always maintain relative position
-                scroll_offset += new_filtered_entries;
-            } else if scroll_offset > new_filtered_entries {
-                // When not paused but scrolled up, maintain some position but allow gradual scrolling
-                scroll_offset -= new_filtered_entries;
-            } else {
-                // When not paused and near bottom, scroll to bottom
-                scroll_offset = 0;
-            }
+            log_viewer.adjust_for_new_entries(new_filtered_entries);
         }
         
         // Store the current filtered count for next iteration
@@ -84,61 +69,15 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                 ])
                 .split(f.size());
 
-            // Calculate visible lines
-            let total_filtered_lines = filtered_logs.len();
-            let log_area_height = chunks[0].height as usize - 2; // Subtract 2 for the borders
-            
-            // Ensure scroll_offset doesn't exceed the available lines
-            scroll_offset = scroll_offset.min(total_filtered_lines.saturating_sub(log_area_height));
-            
-            let start = if total_filtered_lines > log_area_height + scroll_offset {
-                total_filtered_lines - log_area_height - scroll_offset
-            } else {
-                0
-            };
-            let end = total_filtered_lines.saturating_sub(scroll_offset);
-
-            // Format the visible lines based on settings
-            let display_lines: Vec<Spans> = filtered_logs[start..end]
-                .iter()
-                .map(|entry| {
-                    let formatted = entry.format(&settings, None);
-                    let style = match entry.source.as_str() {
-                        "stderr" => Style::default().fg(Color::Red),
-                        "stdout" => Style::default().fg(Color::Yellow),
-                        _ => Style::default().fg(Color::White),
-                    };
-                    Spans::from(Span::styled(formatted, style))
-                })
-                .collect();
-
-            // Create title with pause indicator
-            let title = if is_paused {
-                "Oxtail - [PAUSED] - Neon Terminal UI"
-            } else {
-                "Oxtail - Neon Terminal UI"
-            };
-
-            // Render the log area
-            let log_block = Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    title,
-                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
-                ));
-            
-            let logs_paragraph = Paragraph::new(display_lines)
-                .block(log_block)
-                .wrap(Wrap { trim: true });
-            
-            f.render_widget(logs_paragraph, chunks[0]);
+            // Render the log viewer widget with filtered logs
+            f.render_log_viewer(log_viewer.clone(), chunks[0], &filtered_logs, &settings);
             
             // Render the command prompt widget
             f.render_widget(command_prompt.clone(), chunks[1]);
         }).unwrap();
 
         if event::poll(Duration::from_millis(200)).unwrap() {
-            // Calculate visible lines based on current terminal height
+            // Calculate visible lines based on current terminal height for page scrolling
             let visible_count = (terminal.size().unwrap().height as usize).saturating_sub(3);
             
             match event::read().unwrap() {
@@ -177,46 +116,19 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                                 settings.show_raw = !settings.show_raw;
                             },
                             KeyCode::Char('p') | KeyCode::Pause | KeyCode::ScrollLock => {
-                                is_paused = !is_paused;
+                                log_viewer.set_paused(!log_viewer.is_paused());
                             },
                             KeyCode::Up => {
-                                if scroll_offset + 1 <= filtered_logs.len().saturating_sub(visible_count) {
-                                    scroll_offset += 1;
-                                    if !is_paused {
-                                        is_paused = true;
-                                    }
-                                }
+                                log_viewer.scroll_up(1);
                             },
                             KeyCode::Down => {
-                                if scroll_offset > 0 {
-                                    scroll_offset -= 1;
-                                    // When we reach the bottom, unpause
-                                    if scroll_offset == 0 {
-                                        is_paused = false;
-                                    }
-                                }
+                                log_viewer.scroll_down(1);
                             },
                             KeyCode::PageUp => {
-                                let increment = visible_count;
-                                if scroll_offset + increment <= filtered_logs.len().saturating_sub(visible_count) {
-                                    scroll_offset += increment;
-                                    if !is_paused {
-                                        is_paused = true;
-                                    }
-                                } else {
-                                    scroll_offset = filtered_logs.len().saturating_sub(visible_count);
-                                }
+                                log_viewer.page_up(visible_count);
                             },
                             KeyCode::PageDown => {
-                                if scroll_offset >= visible_count {
-                                    scroll_offset -= visible_count;
-                                } else {
-                                    scroll_offset = 0;
-                                }
-                                // When we reach the bottom, unpause
-                                if scroll_offset == 0 {
-                                    is_paused = false;
-                                }
+                                log_viewer.page_down(visible_count);
                             },
                             _ => {},
                         }
@@ -225,21 +137,10 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                 Event::Mouse(mouse_event) => {
                     match mouse_event.kind {
                         crossterm::event::MouseEventKind::ScrollUp => {
-                            if scroll_offset + 1 <= filtered_logs.len().saturating_sub(visible_count) {
-                                scroll_offset += 1;
-                                if !is_paused {
-                                    is_paused = true;
-                                }
-                            }
+                            log_viewer.scroll_up(1);
                         },
                         crossterm::event::MouseEventKind::ScrollDown => {
-                            if scroll_offset > 0 {
-                                scroll_offset -= 1;
-                                // When we reach the bottom, unpause
-                                if scroll_offset == 0 {
-                                    is_paused = false;
-                                }
-                            }
+                            log_viewer.scroll_down(1);
                         },
                         _ => {}
                     }
