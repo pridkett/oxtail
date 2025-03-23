@@ -70,6 +70,14 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
                     settings.show_line_numbers = show;
                     CommandResult::Success(format!("Line numbers are now {}", if show { "visible" } else { "hidden" }))
                 },
+                "filetype" => {
+                    settings.show_file_type = show;
+                    CommandResult::Success(format!("File type indicators are now {}", if show { "visible" } else { "hidden" }))
+                },
+                "ansi" => {
+                    settings.show_raw = show;
+                    CommandResult::Success(format!("ANSI escape codes are now {}", if show { "shown" } else { "hidden" }))
+                },
                 _ => CommandResult::Error(format!("Unknown metadata type: {}", parts[1]))
             }
         },

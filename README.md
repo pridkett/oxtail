@@ -21,8 +21,9 @@ Press `:` to enter command mode, where you can type commands to modify the displ
 
 - `:show_source stdout/stderr/all` - Show logs from the specified source.
 - `:hide_source stdout/stderr/all` - Hide logs from the specified source.
-- `:show_meta time/source/lines` - Show the specified metadata.
-- `:hide_meta time/source/lines` - Hide the specified metadata.
+- `:show_meta time/source/lines/filetype` - Show the specified metadata.
+- `:hide_meta time/source/lines/filetype` - Hide the specified metadata.
+- `:q` or `:quit` - Exit the application.
 
 Command mode features include:
 - Command history navigation with up/down arrow keys

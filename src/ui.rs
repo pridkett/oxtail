@@ -257,6 +257,10 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                                 search_query: String::new(),
                             };
                         },
+                        KeyCode::Char('r') => {
+                            // Toggle show_raw setting
+                            settings.show_raw = !settings.show_raw;
+                        },
                         KeyCode::Up => {
                             if scroll_offset + 1 <= log_entries.len().saturating_sub(visible_count) {
                                 scroll_offset += 1;

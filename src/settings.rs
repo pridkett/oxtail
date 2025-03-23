@@ -14,6 +14,8 @@ pub struct LogSettings {
     pub show_time: bool,
     pub show_source_labels: bool,
     pub show_line_numbers: bool,
+    pub show_file_type: bool,
+    pub show_raw: bool,  // When true, shows content with ANSI codes, otherwise shows plain content
 }
 
 impl Default for LogSettings {
@@ -37,6 +39,8 @@ impl Default for LogSettings {
             show_time: true,
             show_source_labels: true,
             show_line_numbers: false,
+            show_file_type: false,
+            show_raw: false,  // Default to plain text (no ANSI codes)
         }
     }
 }
