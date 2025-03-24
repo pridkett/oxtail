@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use termion::event::Key;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -174,28 +174,28 @@ impl CommandPrompt {
     
     /// Handle keyboard input, returning whether the input was consumed
     /// and any completed command
-    pub fn handle_key_event(&mut self, key: KeyEvent) -> (bool, CommandInputResult) {
+    pub fn handle_key_event(&mut self, key: Key) -> (bool, CommandInputResult) {
         if !self.active {
             return (false, CommandInputResult::Pending);
         }
         
         // Handle search mode separately
         if self.search_mode {
-            match key.code {
-                KeyCode::Esc => {
+            match key {
+                Key::Esc => {
                     // Exit search mode but stay in command mode
                     self.search_mode = false;
                     self.search_query.clear();
                     return (true, CommandInputResult::Pending);
                 },
-                KeyCode::Enter => {
+                Key::Char('\n') => {
                     // Accept the search result and exit search mode
                     self.search_mode = false;
                     self.search_query.clear();
                     self.cursor_position = self.buffer.len();
                     return (true, CommandInputResult::Pending);
                 },
-                KeyCode::Char(c) => {
+                Key::Char(c) => {
                     // Add character to search query and search
                     self.search_query.push(c);
                     if let Some(result) = self.history.search(&self.search_query) {
@@ -204,7 +204,7 @@ impl CommandPrompt {
                     }
                     return (true, CommandInputResult::Pending);
                 },
-                KeyCode::Backspace => {
+                Key::Backspace => {
                     // Remove character from search query and search again
                     if !self.search_query.is_empty() {
                         self.search_query.pop();
@@ -219,65 +219,59 @@ impl CommandPrompt {
             }
         } else {
             // Regular command mode
-            match key.code {
-                KeyCode::Esc => {
+            match key {
+                Key::Esc => {
                     return (true, CommandInputResult::Cancelled);
                 },
-                KeyCode::Enter => {
+                Key::Char('\n') => {
                     // Return the command for execution
                     let cmd = self.buffer.clone();
                     return (true, CommandInputResult::Command(cmd));
                 },
-                KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // Handle special control key combinations
-                    match c {
-                        'a' => {
-                            // Ctrl+A: Move to beginning of line
-                            self.cursor_position = 0;
-                        },
-                        'e' => {
-                            // Ctrl+E: Move to end of line
-                            self.cursor_position = self.buffer.len();
-                        },
-                        'k' => {
-                            // Ctrl+K: Kill to end of line
-                            if self.cursor_position < self.buffer.len() {
-                                self.buffer.truncate(self.cursor_position);
-                            }
-                        },
-                        'u' => {
-                            // Ctrl+U: Kill to beginning of line
-                            if self.cursor_position > 0 {
-                                self.buffer = self.buffer[self.cursor_position..].to_string();
-                                self.cursor_position = 0;
-                            }
-                        },
-                        'w' => {
-                            // Ctrl+W: Delete word backward
-                            let mut new_pos = self.cursor_position;
-                            // Skip spaces
-                            while new_pos > 0 && self.buffer.chars().nth(new_pos - 1).unwrap_or(' ').is_whitespace() {
-                                new_pos -= 1;
-                            }
-                            // Skip non-spaces
-                            while new_pos > 0 && !self.buffer.chars().nth(new_pos - 1).unwrap_or(' ').is_whitespace() {
-                                new_pos -= 1;
-                            }
-                            
-                            if new_pos < self.cursor_position {
-                                self.buffer.replace_range(new_pos..self.cursor_position, "");
-                                self.cursor_position = new_pos;
-                            }
-                        },
-                        'r' => {
-                            // Ctrl+R: Reverse search
-                            self.search_mode = true;
-                            self.search_query.clear();
-                        },
-                        _ => {} // Ignore other control characters
+                Key::Ctrl('a') => {
+                    // Ctrl+A: Move to beginning of line
+                    self.cursor_position = 0;
+                },
+                Key::Ctrl('e') => {
+                    // Ctrl+E: Move to end of line
+                    self.cursor_position = self.buffer.len();
+                },
+                Key::Ctrl('k') => {
+                    // Ctrl+K: Kill to end of line
+                    if self.cursor_position < self.buffer.len() {
+                        self.buffer.truncate(self.cursor_position);
                     }
                 },
-                KeyCode::Char(c) => {
+                Key::Ctrl('u') => {
+                    // Ctrl+U: Kill to beginning of line
+                    if self.cursor_position > 0 {
+                        self.buffer = self.buffer[self.cursor_position..].to_string();
+                        self.cursor_position = 0;
+                    }
+                },
+                Key::Ctrl('w') => {
+                    // Ctrl+W: Delete word backward
+                    let mut new_pos = self.cursor_position;
+                    // Skip spaces
+                    while new_pos > 0 && self.buffer.chars().nth(new_pos - 1).unwrap_or(' ').is_whitespace() {
+                        new_pos -= 1;
+                    }
+                    // Skip non-spaces
+                    while new_pos > 0 && !self.buffer.chars().nth(new_pos - 1).unwrap_or(' ').is_whitespace() {
+                        new_pos -= 1;
+                    }
+                    
+                    if new_pos < self.cursor_position {
+                        self.buffer.replace_range(new_pos..self.cursor_position, "");
+                        self.cursor_position = new_pos;
+                    }
+                },
+                Key::Ctrl('r') => {
+                    // Ctrl+R: Reverse search
+                    self.search_mode = true;
+                    self.search_query.clear();
+                },
+                Key::Char(c) => {
                     self.status = None; // Clear status when editing
                     
                     // Insert character at cursor position
@@ -288,7 +282,7 @@ impl CommandPrompt {
                     }
                     self.cursor_position += 1;
                 },
-                KeyCode::Backspace => {
+                Key::Backspace => {
                     self.status = None; // Clear status when editing
                     
                     // Handle backspace at cursor position
@@ -299,41 +293,41 @@ impl CommandPrompt {
                         }
                     }
                 },
-                KeyCode::Delete => {
+                Key::Delete => {
                     self.status = None;
                     // Delete character under cursor
                     if self.cursor_position < self.buffer.len() {
                         self.buffer.remove(self.cursor_position);
                     }
                 },
-                KeyCode::Left => {
+                Key::Left => {
                     // Move cursor left
                     if self.cursor_position > 0 {
                         self.cursor_position -= 1;
                     }
                 },
-                KeyCode::Right => {
+                Key::Right => {
                     // Move cursor right
                     if self.cursor_position < self.buffer.len() {
                         self.cursor_position += 1;
                     }
                 },
-                KeyCode::Home => {
+                Key::Home => {
                     // Move to beginning of line
                     self.cursor_position = 0;
                 },
-                KeyCode::End => {
+                Key::End => {
                     // Move to end of line
                     self.cursor_position = self.buffer.len();
                 },
-                KeyCode::Up => {
+                Key::Up => {
                     // Navigate command history backward
                     if let Some(cmd) = self.history.up() {
                         self.buffer = cmd;
                         self.cursor_position = self.buffer.len();
                     }
                 },
-                KeyCode::Down => {
+                Key::Down => {
                     // Navigate command history forward
                     if let Some(cmd) = self.history.down() {
                         self.buffer = cmd;
@@ -366,16 +360,8 @@ impl Widget for CommandPrompt {
             format!(":{} | {}", self.buffer, msg)
         } else {
             // Format with cursor position indicator
-            let cursor_indicator = if self.cursor_position < self.buffer.len() {
-                // Cursor within the text
-                format!("{}\u{2588}{}", 
-                    &self.buffer[..self.cursor_position], 
-                    &self.buffer[self.cursor_position..])
-            } else {
-                // Cursor at the end
-                format!("{}\u{2588}", self.buffer)
-            };
-            format!(":{}", cursor_indicator)
+            format!(":{}", self.buffer)
+            // We'll handle cursor rendering separately with set_cursor
         };
         
         let style = if self.search_mode {

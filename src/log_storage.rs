@@ -8,6 +8,8 @@ pub struct LogSource {
     name: String,
     entries: Vec<LogEntry>,
     next_line_number: usize,
+    has_new_entries: bool,
+    visible: bool,
 }
 
 impl LogSource {
@@ -16,6 +18,8 @@ impl LogSource {
             name,
             entries: Vec::new(),
             next_line_number: 1, // Start from 1 for human readability
+            has_new_entries: false,
+            visible: true, // Default to visible
         }
     }
     
@@ -23,6 +27,7 @@ impl LogSource {
         entry.line_number = self.next_line_number;
         self.next_line_number += 1;
         self.entries.push(entry);
+        self.has_new_entries = true;
         self.entries.last().unwrap()
     }
     
@@ -34,6 +39,22 @@ impl LogSource {
     
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+    
+    pub fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+    
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+    
+    pub fn has_new_entries(&self) -> bool {
+        self.has_new_entries
+    }
+    
+    pub fn clear_new_entries_flag(&mut self) {
+        self.has_new_entries = false;
     }
 }
 
@@ -95,6 +116,7 @@ impl Filter {
 pub struct LogStorage {
     sources: HashMap<String, LogSource>,
     filter: Filter,
+    active_source: Option<String>,
 }
 
 impl LogStorage {
@@ -102,6 +124,7 @@ impl LogStorage {
         Self {
             sources: HashMap::new(),
             filter: Filter::new(),
+            active_source: None,
         }
     }
     
@@ -112,6 +135,14 @@ impl LogStorage {
     
     pub fn get_source(&self, name: &str) -> Option<&LogSource> {
         self.sources.get(name)
+    }
+    
+    pub fn set_active_source(&mut self, name: Option<String>) {
+        self.active_source = name;
+    }
+    
+    pub fn get_active_source(&self) -> &Option<String> {
+        &self.active_source
     }
     
     pub fn add_entry(&mut self, entry: LogEntry) {
@@ -140,5 +171,25 @@ impl LogStorage {
     
     pub fn total_entries(&self) -> usize {
         self.sources.values().map(|s| s.len()).sum()
+    }
+    
+    // Check if there are new entries in any visible source that are currently filtered in
+    pub fn has_new_visible_entries(&self) -> bool {
+        if let Some(active) = &self.active_source {
+            if let Some(source) = self.sources.get(active) {
+                return source.has_new_entries() && source.is_visible();
+            }
+        }
+        
+        // If no active source, check all visible sources
+        self.sources.values()
+            .any(|source| source.has_new_entries() && source.is_visible())
+    }
+    
+    // Clear the new entries flags on all sources
+    pub fn clear_new_entries_flags(&mut self) {
+        for source in self.sources.values_mut() {
+            source.clear_new_entries_flag();
+        }
     }
 }

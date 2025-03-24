@@ -3,11 +3,13 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 use crate::log_entry::LogEntry;
 use crate::settings::LogSettings;
+use ansi_parser::{Output, AnsiParser};
+use unicode_width::UnicodeWidthChar;
 
 /// A widget for displaying log entries
 #[derive(Debug, Clone)]
@@ -30,8 +32,8 @@ impl LogViewer {
     /// Create a new log viewer widget
     pub fn new() -> Self {
         Self {
-            scroll_offset: 0,
-            is_paused: false,
+            scroll_offset: 0, // offset is the number of lines up from the bottom
+            is_paused: false, // if true it should now scroll
             title: "Oxtail - Neon Terminal UI".to_string(),
         }
     }
@@ -69,24 +71,19 @@ impl LogViewer {
     
     /// Scroll up by the specified amount
     pub fn scroll_up(&mut self, amount: usize) -> &mut Self {
+        // FIXME: this should be capped at the number of lines in the log
         self.scroll_offset += amount;
-        if !self.is_paused {
-            self.is_paused = true;
-        }
+        self.set_paused(true);
         self
     }
     
     /// Scroll down by the specified amount, bounded by max_scroll
     pub fn scroll_down(&mut self, amount: usize) -> &mut Self {
-        if self.scroll_offset >= amount {
-            self.scroll_offset -= amount;
-        } else {
-            self.scroll_offset = 0;
-        }
+        self.scroll_offset = self.scroll_offset.saturating_sub(amount);
         
         // When we reach the bottom, unpause
         if self.scroll_offset == 0 {
-            self.is_paused = false;
+            self.set_paused(false);
         }
         self
     }
@@ -103,19 +100,65 @@ impl LogViewer {
     
     /// Adjust scroll position for new entries
     pub fn adjust_for_new_entries(&mut self, new_entries_count: usize) -> &mut Self {
+        // When paused, we should maintain the exact position in the log
+        // by adjusting the scroll offset by the number of new entries
         if self.is_paused {
-            // When paused, always maintain relative position
             self.scroll_offset += new_entries_count;
-        } else if self.scroll_offset > new_entries_count {
-            // When not paused but scrolled up, maintain some position but allow gradual scrolling
-            self.scroll_offset -= new_entries_count;
+        // } else if self.scroll_offset > new_entries_count {
+        //     // When not paused but scrolled up, maintain some position but allow gradual scrolling
+        //     self.scroll_offset -= new_entries_count;
         } else {
-            // When not paused and near bottom, scroll to bottom
+            // When not paused, we want to stay at the bottom
             self.scroll_offset = 0;
         }
         self
     }
+
+    /// Truncate ANSI strings to fit within a specified width
+    /// This is non-trivial because of ANSI escape codes
+    /// it also doesn't always clear at the end
+    fn truncate_ansi(&self, input: &str, max_width: usize) -> String {
+        let mut result = String::new();
+        let mut current_width = 0;
     
+        // Parse the input string into ANSI pieces.
+        for piece in input.ansi_parse() {
+            match piece {
+                Output::TextBlock(text) => {
+                    let mut remaining = text;
+                    while !remaining.is_empty() && current_width < max_width {
+                        // Get the next character.
+                        let ch = remaining.chars().next().unwrap();
+                        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+                        
+                        // Check if adding this character would exceed max_width.
+                        if current_width + ch_width > max_width {
+                            break;
+                        }
+                        result.push(ch);
+                        current_width += ch_width;
+                        remaining = &remaining[ch.len_utf8()..];
+                    }
+                }
+                // For escape sequences, convert them to string properly
+                Output::Escape(seq) => {
+                    result.push_str(&format!("\x1b{}", seq));
+                }
+            }
+            if current_width >= max_width {
+                break;
+            }
+        }
+    
+        // Pad with spaces if the visible width is less than max_width.
+        // if current_width < max_width {
+        //     result.push_str(&"X".repeat(max_width - current_width));
+        // }
+
+        // Strip any trailing whitespace
+        result.trim_end().to_string()
+    }
+
     /// Handle rendering the log entries to the screen
     fn render_logs<'a>(
         &self,
@@ -126,7 +169,8 @@ impl LogViewer {
         // Calculate visible lines
         let total_filtered_lines = filtered_logs.len();
         let log_area_height = area.height.saturating_sub(2) as usize; // Subtract 2 for the borders
-        
+        let log_area_width = area.width.saturating_sub(2) as usize; // Subtract 2 for the borders
+
         // Calculate valid scroll range
         let max_scroll = total_filtered_lines.saturating_sub(log_area_height);
         let effective_scroll = self.scroll_offset.min(max_scroll);
@@ -138,9 +182,9 @@ impl LogViewer {
             0
         };
         let end = total_filtered_lines.saturating_sub(effective_scroll);
-
+        
         // Format the visible lines based on settings
-        let display_lines: Vec<Spans> = filtered_logs[start..end]
+        let display_lines: Vec<Line> = filtered_logs[start..end]
             .iter()
             .map(|entry| {
                 let formatted = entry.format(settings, None);
@@ -149,17 +193,33 @@ impl LogViewer {
                     "stdout" => Style::default().fg(Color::Yellow),
                     _ => Style::default().fg(Color::White),
                 };
-                Spans::from(Span::styled(formatted, style))
+                // pad the formatted string to fit the log area width
+                let formatted = if settings.show_raw {
+                    // raw mode -- need to figure out some better way to pad this
+                    let plain_len = entry.content_plain.len();
+                    let padding = log_area_width.saturating_sub(plain_len);
+                    let truncated = self.truncate_ansi(&formatted, log_area_width);
+                    
+                    // create extra spaces based on the padding
+                    let extra_spaces = " ".repeat(padding);
+                    format!("{truncated}{extra_spaces}")
+                } else {
+                    // if not raw mode, we should be okay
+                    let padding = log_area_width.saturating_sub(formatted.len());
+                    let extra_spaces = " ".repeat(padding);
+                    format!("{:<width$}{}", formatted, extra_spaces, width = log_area_width)
+                };
+                Line::from(Span::styled(formatted, style))
             })
             .collect();
-
-        // Create title with pause indicator
+        
+        // Get the title with pause indicator
         let title = if self.is_paused {
-            format!("{} - [PAUSED]", self.title)
+            format!("{} offset: {} - [PAUSED]", self.title, self.scroll_offset)
         } else {
-            self.title.clone()
+            format!("{} offset: {}", self.title, self.scroll_offset)
         };
-
+        
         // Create the block with title
         let log_block = Block::default()
             .borders(Borders::ALL)
@@ -171,7 +231,7 @@ impl LogViewer {
         // Create and return the paragraph widget
         Paragraph::new(display_lines)
             .block(log_block)
-            .wrap(Wrap { trim: true })
+            // .wrap(Wrap { trim: true })
     }
 }
 
@@ -208,7 +268,7 @@ pub trait LogViewerExt {
     );
 }
 
-impl<B: Backend> LogViewerExt for ratatui::Frame<'_, B> {
+impl LogViewerExt for ratatui::Frame<'_> {
     fn render_log_viewer(
         &mut self,
         widget: LogViewer,

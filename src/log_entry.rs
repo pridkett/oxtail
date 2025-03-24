@@ -76,4 +76,8 @@ impl LogEntry {
         
         parts.join(" ")
     }
+
+    pub fn get_content_plain_len(&self) -> usize {
+        self.content_plain.len()
+    }
 }
