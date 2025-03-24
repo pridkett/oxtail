@@ -70,9 +70,9 @@ impl LogViewer {
     }
     
     /// Scroll up by the specified amount
-    pub fn scroll_up(&mut self, amount: usize) -> &mut Self {
-        // FIXME: this should be capped at the number of lines in the log
-        self.scroll_offset += amount;
+    pub fn scroll_up(&mut self, amount: usize, total_lines: usize) -> &mut Self {
+        let max_scroll = total_lines.saturating_sub(1);
+        self.scroll_offset = (self.scroll_offset + amount).min(max_scroll);
         self.set_paused(true);
         self
     }
@@ -89,8 +89,8 @@ impl LogViewer {
     }
     
     /// Page up (scroll up by a page)
-    pub fn page_up(&mut self, page_size: usize) -> &mut Self {
-        self.scroll_up(page_size)
+    pub fn page_up(&mut self, page_size: usize, total_lines: usize) -> &mut Self {
+        self.scroll_up(page_size, total_lines)
     }
     
     /// Page down (scroll down by a page)
@@ -139,13 +139,14 @@ impl LogViewer {
         // by adjusting the scroll offset by the number of new entries
         if self.is_paused {
             self.scroll_offset += new_entries_count;
+        }
         // } else if self.scroll_offset > new_entries_count {
         //     // When not paused but scrolled up, maintain some position but allow gradual scrolling
-        //     self.scroll_offset -= new_entries_count;
-        } else {
-            // When not paused, we want to stay at the bottom
-            self.scroll_offset = 0;
-        }
+        //     // self.scroll_offset -= new_entries_count;
+        // } else {
+        //     // When not paused, we want to stay at the bottom
+        //     self.scroll_offset = 0;
+        // }
         self
     }
 

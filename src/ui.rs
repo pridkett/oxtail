@@ -189,7 +189,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                                     log_viewer.scroll_down(1);
                                 },
                                 Key::Char('k') | Key::Up => {
-                                    log_viewer.scroll_up(1);
+                                    let total_lines = log_storage.get_filtered_entries().len();
+                                    log_viewer.scroll_up(1, total_lines);
                                 },
                                 // Beginning/end navigation
                                 Key::Char('g') | Key::Char('<') => {
@@ -200,7 +201,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                                     log_viewer.jump_to_end();
                                 },
                                 Key::PageUp => {
-                                    log_viewer.page_up(visible_count);
+                                    let total_lines = log_storage.get_filtered_entries().len();
+                                    log_viewer.page_up(visible_count, total_lines);
                                 },
                                 Key::PageDown => {
                                     log_viewer.page_down(visible_count);
@@ -213,7 +215,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                     Event::Mouse(mouse_event) => {
                         match mouse_event {
                             MouseEvent::Press(MouseButton::WheelUp, _, _) => {
-                                log_viewer.scroll_up(3);
+                                let total_lines = log_storage.get_filtered_entries().len();
+                                log_viewer.scroll_up(3, total_lines);
                             },
                             MouseEvent::Press(MouseButton::WheelDown, _, _) => {
                                 log_viewer.scroll_down(3);
