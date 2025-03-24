@@ -64,7 +64,7 @@ impl LogEntry {
         // Add the content with file type indicator if enabled
         let content_with_type = if settings.show_file_type {
             if self.is_json {
-                format!("\u{e80b} {}", display_content)
+                format!("\u{e60b} {}", display_content)
             } else {
                 format!("  {}", display_content)
             }
