@@ -7,6 +7,7 @@ mod ui;
 mod settings;
 mod commands;
 mod log_entry;
+mod log_storage;
 mod widgets;
 
 #[derive(Parser, Debug)]

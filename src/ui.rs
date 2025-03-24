@@ -13,6 +13,7 @@ use ratatui::{
     Terminal,
 };
 use crate::log_entry::LogEntry;
+use crate::log_storage::LogStorage;
 use crate::settings::LogSettings;
 use crate::commands::{self, CommandResult};
 use crate::widgets::{CommandPrompt, CommandInputResult, LogViewer, LogViewerExt};
@@ -25,8 +26,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    // Vector to store log entries received from process_handler
-    let mut log_entries: Vec<LogEntry> = Vec::new();
+    // Log storage - manages all log entries and filtering
+    let mut log_storage = LogStorage::new();
     // Keep track of previous filtered entry count for pause adjustment
     let mut previous_filtered_count = 0;
     // Command prompt widget - this will manage the UI mode state
@@ -35,20 +36,21 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
     let mut log_viewer = LogViewer::new();
     // Settings
     let mut settings = LogSettings::default();
+    
+    // Initialize log storage filter from settings
+    log_storage.update_filter_from_settings(&settings);
 
     // Application loop
     loop {
         // Non-blocking check for new messages
         let mut had_new_entries = false;
         while let Ok(entry) = rx.try_recv() {
-            log_entries.push(entry);
+            log_storage.add_entry(entry);
             had_new_entries = true;
         }
 
-        // Filter logs based on settings (do this before scroll adjustment)
-        let filtered_logs: Vec<&LogEntry> = log_entries.iter()
-            .filter(|entry| settings.is_source_visible(&entry.source))
-            .collect();
+        // Get filtered logs from storage
+        let filtered_logs = log_storage.get_filtered_entries();
         
         // Update scroll position based on new entries and pause state
         if had_new_entries {
@@ -89,6 +91,8 @@ pub fn run_ui(rx: Receiver<LogEntry>) {
                                 CommandInputResult::Command(cmd) => {
                                     match commands::execute_command(&cmd, &mut settings) {
                                         CommandResult::Success(_) => {
+                                            // Update log storage filter after settings change
+                                            log_storage.update_filter_from_settings(&settings);
                                             command_prompt.add_to_history(cmd);
                                             command_prompt.deactivate();
                                         },
