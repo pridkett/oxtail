@@ -16,6 +16,8 @@ pub enum CommandInputResult {
     Cancelled,
     /// Still in input mode, no command to process yet
     Pending,
+    /// Jump to specific line number
+    LineJump(usize),
 }
 
 /// Manages command history for the command prompt
@@ -224,9 +226,14 @@ impl CommandPrompt {
                     return (true, CommandInputResult::Cancelled);
                 },
                 Key::Char('\n') => {
-                    // Return the command for execution
-                    let cmd = self.buffer.clone();
-                    return (true, CommandInputResult::Command(cmd));
+                    // Check if the buffer contains only numbers
+                    if let Ok(line_number) = self.buffer.parse::<usize>() {
+                        return (true, CommandInputResult::LineJump(line_number));
+                    } else {
+                        // Return the command for execution
+                        let cmd = self.buffer.clone();
+                        return (true, CommandInputResult::Command(cmd));
+                    }
                 },
                 Key::Ctrl('a') => {
                     // Ctrl+A: Move to beginning of line

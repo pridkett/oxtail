@@ -51,7 +51,7 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
     
     // Setup terminal features by writing escape sequences directly
     // Use raw escape sequences for mouse capture since termion v2.0 might not export them directly
-    write!(stdout, "{}{}\x1b[?1000h\x1b[?1002h\x1b[?1015h\x1b[?1006h",
+    write!(stdout, "{}{}[?1000h[?1002h[?1015h[?1006h",
         termion::screen::ToAlternateScreen,
         cursor::Hide
     )?;
@@ -88,45 +88,50 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                 had_new_entries = true;
             }
             
-            // Collect all information we need before the render closure
-            let filtered_logs = log_storage.get_filtered_entries();
-            let current_count = filtered_logs.len();
-            let new_entries_count = current_count.saturating_sub(previous_filtered_count);
-            let has_visible_entries = if had_new_entries && !log_viewer.is_paused() && new_entries_count > 0 {
-                log_storage.has_new_visible_entries()
-            } else {
-                false
-            };
-
-            // Now that we're done with filtered_logs, we can perform mutable operations
-            if had_new_entries {
-                log_viewer.adjust_for_new_entries(new_entries_count);
-            }
-
-            // Check if it's time to refresh the UI (either due to new entries or timer)
-            let now = std::time::Instant::now();
-            if had_new_entries || now.duration_since(last_refresh) >= refresh_rate {
-                // Draw UI
-                terminal.draw(|f| {
-                    let chunks = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints([
-                            Constraint::Min(1),
-                            Constraint::Length(1),
-                        ])
-                        .split(f.size());
-    
-                    f.render_log_viewer(log_viewer.clone(), chunks[0], &filtered_logs, &settings);
-                    f.render_widget(command_prompt.clone(), chunks[1]);
-                })?;
+            // Scope for handling log storage operations
+            {
+                let filtered_logs = log_storage.get_filtered_entries();
+                let current_count = filtered_logs.len();
+                let new_entries_count = current_count.saturating_sub(previous_filtered_count);
                 
-                last_refresh = now;
+                // Update previous count early since we have the current count
+                if had_new_entries {
+                    previous_filtered_count = current_count;
+                }
+
+                let has_visible_entries = if had_new_entries && !log_viewer.is_paused() && new_entries_count > 0 {
+                    log_storage.has_new_visible_entries()
+                } else {
+                    false
+                };
+
+                // Now that we're done with filtered_logs, we can perform mutable operations
+                if had_new_entries {
+                    log_viewer.adjust_for_new_entries(new_entries_count);
+                }
+
+                // Check if it's time to refresh the UI (either due to new entries or timer)
+                let now = std::time::Instant::now();
+                if had_new_entries || now.duration_since(last_refresh) >= refresh_rate {
+                    // Draw UI
+                    terminal.draw(|f| {
+                        let chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints([
+                                Constraint::Min(1),
+                                Constraint::Length(1),
+                            ])
+                            .split(f.size());
+        
+                        f.render_log_viewer(log_viewer.clone(), chunks[0], &filtered_logs, &settings);
+                        f.render_widget(command_prompt.clone(), chunks[1]);
+                    })?;
+                    
+                    last_refresh = now;
+                }
             }
             
-
-            
             if had_new_entries {
-                previous_filtered_count = current_count;
                 log_storage.clear_new_entries_flags();
             }
 
@@ -160,6 +165,11 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                                         command_prompt.deactivate();
                                     },
                                     CommandInputResult::Pending => {},
+                                    CommandInputResult::LineJump(line) => {
+                                        let total_lines = log_storage.get_filtered_entries().len();
+                                        log_viewer.jump_to_line(line, total_lines);
+                                        command_prompt.deactivate();
+                                    }
                                 }
                             }
                         } else {
@@ -174,11 +184,20 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
                                 Key::Char('p') => {
                                     log_viewer.set_paused(!log_viewer.is_paused());
                                 },
-                                Key::Up => {
+                                // Vim-style navigation
+                                Key::Char('j') | Key::Down => {
+                                    log_viewer.scroll_down(1);
+                                },
+                                Key::Char('k') | Key::Up => {
                                     log_viewer.scroll_up(1);
                                 },
-                                Key::Down => {
-                                    log_viewer.scroll_down(1);
+                                // Beginning/end navigation
+                                Key::Char('g') | Key::Char('<') => {
+                                    let total_lines = log_storage.get_filtered_entries().len();
+                                    log_viewer.jump_to_start(total_lines);
+                                },
+                                Key::Char('G') | Key::Char('>') => {
+                                    log_viewer.jump_to_end();
                                 },
                                 Key::PageUp => {
                                     log_viewer.page_up(visible_count);
@@ -227,7 +246,7 @@ pub fn run_ui(rx: Receiver<LogEntry>) -> Result<()> {
     // Reset terminal state when exiting
     write!(
         terminal.backend_mut(),
-        "{}{}{}\x1b[?1000l\x1b[?1002l\x1b[?1015l\x1b[?1006l",
+        "{}{}{}",
         termion::screen::ToMainScreen,
         cursor::Show,
         termion::clear::All

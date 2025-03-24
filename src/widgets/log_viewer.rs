@@ -97,6 +97,41 @@ impl LogViewer {
     pub fn page_down(&mut self, page_size: usize) -> &mut Self {
         self.scroll_down(page_size)
     }
+
+    /// Jump to a specific line number (1-based)
+    pub fn jump_to_line(&mut self, line_number: usize, total_lines: usize) -> &mut Self {
+        if line_number == 0 || total_lines == 0 {
+            return self;
+        }
+
+        // Convert 1-based line number to 0-based index
+        let target_line = line_number.saturating_sub(1);
+        
+        // Calculate scroll offset to show the target line
+        // We want the target line to appear at the top of the view if possible
+        if target_line >= total_lines {
+            self.scroll_offset = 0; // If target is beyond total lines, go to bottom
+        } else {
+            self.scroll_offset = total_lines.saturating_sub(target_line).saturating_sub(1);
+        }
+        
+        self.set_paused(true);
+        self
+    }
+
+    /// Jump to the start of the log
+    pub fn jump_to_start(&mut self, total_lines: usize) -> &mut Self {
+        self.scroll_offset = total_lines.saturating_sub(1);
+        self.set_paused(true);
+        self
+    }
+
+    /// Jump to the end of the log
+    pub fn jump_to_end(&mut self) -> &mut Self {
+        self.scroll_offset = 0;
+        self.set_paused(false);
+        self
+    }
     
     /// Adjust scroll position for new entries
     pub fn adjust_for_new_entries(&mut self, new_entries_count: usize) -> &mut Self {
