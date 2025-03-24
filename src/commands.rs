@@ -10,7 +10,7 @@ pub fn execute_command(cmd: &str, settings: &mut LogSettings) -> CommandResult {
     let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
     
     if parts.is_empty() {
-        return CommandResult::Error("Empty command".to_string());
+        return CommandResult::Success({});
     }
     
     match parts[0] {
